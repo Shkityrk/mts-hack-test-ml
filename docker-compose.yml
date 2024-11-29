@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  nlp_service:
+    build: .
+    volumes:
+      - nltk_data_volume:/app/nltk_data  # Монтируем volume для NLTK данных
+    environment:
+      - NLTK_DATA=/app/nltk_data  # Указываем путь для NLTK данных
+    ports:
+      - "5000:5000"  # Если ваше приложение использует порты, укажите их
+
+volumes:
+  nltk_data_volume:  # Создаем volume для хранения данных NLTK
