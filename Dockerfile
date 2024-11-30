@@ -8,7 +8,8 @@ RUN apk update && apk add --no-cache \
     bash \
     gcc \
     musl-dev \
-    libmagic
+    libmagic \
+    libxml2-dev
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
@@ -17,7 +18,7 @@ WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Копируем сам проект в контейнер
+# Копируем весь проект в контейнер
 COPY . /app/
 
 # Создаем директорию для хранения данных NLTK
@@ -26,5 +27,8 @@ RUN mkdir -p /app/nltk_data
 # Устанавливаем переменную окружения для NLTK
 ENV NLTK_DATA=/app/nltk_data
 
-# Запускаем приложение (если есть main.py или другой entry-point)
-CMD ["python", "main.py"]
+# Делаем скрипт исполнимым
+RUN chmod +x /app/scripts/app.sh
+
+# Запуск скрипта app.sh, который будет запускать FastAPI
+CMD ["/bin/bash", "/app/scripts/app.sh"]

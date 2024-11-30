@@ -1,49 +1,37 @@
 import os
 
 import numpy as np
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import List
 import json
 import string
 import re
-
 import nltk
-
-# Указываем путь, где будет храниться NLTK данные
-nltk_data_dir = "nltk_data"  # Укажите путь к вашей директории
-# Устанавливаем переменную окружения NLTK_DATA
-os.environ['NLTK_DATA'] = nltk_data_dir
-# Проверка, существует ли директория, и если нет - создаем
-if not os.path.exists(nltk_data_dir):
-    os.makedirs(nltk_data_dir)
-
-    # Проверяем наличие нужных данных
-    nltk.download('stopwords', download_dir=nltk_data_dir)
-    nltk.download('punkt_tab', download_dir=nltk_data_dir)
-    nltk.download('wordnet', download_dir=nltk_data_dir)
-    nltk.download('omw-1.4', download_dir=nltk_data_dir)
-    nltk.download('averaged_perceptron_tagger_eng', download_dir=nltk_data_dir)
-    nltk.download('maxent_ne_chunker', download_dir=nltk_data_dir)
-    nltk.download('words', download_dir=nltk_data_dir)
-
-
-
-
-
-from nltk.corpus import stopwords
+import pymorphy3
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from nltk import pos_tag
-
-import pymorphy3
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+# Настройка NLTK
+nltk_data_dir = "nltk_data"
+if not os.path.exists(nltk_data_dir):
+    os.makedirs(nltk_data_dir)
+    nltk.download('stopwords', download_dir=nltk_data_dir)
+    nltk.download('punkt', download_dir=nltk_data_dir)
+    nltk.download('wordnet', download_dir=nltk_data_dir)
+    nltk.download('omw-1.4', download_dir=nltk_data_dir)
+    nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_dir)
+
+# Инициализация NLTK и pymorphy3
+stop_words = set(nltk.corpus.stopwords.words('russian')).union(set(nltk.corpus.stopwords.words('english')))
+translator = str.maketrans('', '', string.punctuation)
 morph = pymorphy3.MorphAnalyzer()
 lemmatizer_en = WordNetLemmatizer()
 
-stop_words = set(stopwords.words('russian')).union(set(stopwords.words('english')))
-
-translator = str.maketrans('', '', string.punctuation)
-
+# Функции для обработки текста
 def preprocess_text(text):
     """Предобработка текста: приведение к нижнему регистру, удаление пунктуации и пробелов."""
     text = text.lower()
@@ -101,10 +89,6 @@ def preprocess_and_lemmatize(text):
     ]
     return ' '.join(lemmatized)
 
-def preprocess_texts(texts):
-    """Предобработка всех текстов в словаре."""
-    return {key: preprocess_and_lemmatize(text) for key, text in texts.items()}
-
 def vectorize_texts(processed_texts):
     """Векторизация текстов с помощью TF-IDF."""
     vectorizer = TfidfVectorizer()
@@ -132,8 +116,7 @@ def get_matching_ids(input_json, threshold=0.2):
     query = data['prompt']
     texts = {f"text_{emp['id']}": emp['about'] for emp in data['employees']}
 
-
-    processed_texts = preprocess_texts(texts)
+    processed_texts = {key: preprocess_and_lemmatize(text) for key, text in texts.items()}
     processed_query = preprocess_and_lemmatize(query)
     vectorizer, tfidf_matrix = vectorize_texts(processed_texts)
     query_vector = vectorize_query(vectorizer, processed_query)
@@ -143,33 +126,21 @@ def get_matching_ids(input_json, threshold=0.2):
     matching_ids = [int(key.split('_')[1]) for key in relevant_texts.keys()]
     return matching_ids
 
-input_json = '''
-{
-    "prompt": "гулять в парке",
-    "employees": [
-        {
-            "id": 1,
-            "about": "Я люблю ходить в парки"
-        },
-        {
-            "id": 2,
-            "about": "I watch movies every weekend"
-        },
-        {
-            "id": 3,
-            "about": "Гулять по городу очень интересно"
-        },
-        {
-            "id": 4,
-            "about": "Парки весной особенно красивы"
-        },
-        {
-            "id": 5,
-            "about": "Films and cinema are my passion"
-        }
-    ]
-}
-'''
+# FastAPI части
+app = FastAPI()
 
-matching_ids = get_matching_ids(input_json)
-print(matching_ids)
+class Employee(BaseModel):
+    id: int
+    about: str
+
+class QueryRequest(BaseModel):
+    prompt: str
+    employees: List[Employee]
+
+@app.post("/get_matching_ids/")
+async def get_matching_ids_endpoint(query: QueryRequest):
+    # Вызов логики для получения matching_ids
+    input_json = json.dumps(query.dict())
+    matching_ids = get_matching_ids(input_json)
+
+    return {"matching_ids": matching_ids}
